@@ -55,7 +55,7 @@ HandGestureReelControler/
 ### 1. Clone the project and install dependencies
 
 ```bash
-git clone https://github.com/OussamaMadev/HandGestureReelControl
+git clone https://github.com/OussamaMadev/HandGestureReelControl.git
 cd HandGestureReelControler
 pip install -r requirements.txt
 ```

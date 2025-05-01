@@ -1,0 +1,17 @@
+{
+    "0": "scroll_next",          
+    "1": "scroll_prev",          
+    "2": "click_like",            
+    "3": "open_comments",         
+    "4": "close_comments",        
+    "5": "volume_up",             
+    "6": "volume_down",           
+    "7": "pause_play",            
+    "8": "mute_unmute",           
+    "9": "screenshot",            
+    "10": "scroll_down",   
+    "11": "scroll_up",          
+    "12": "next_comment",         
+    "13": "prev_comment"          
+  }
+  
