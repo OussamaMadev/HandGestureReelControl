@@ -50,18 +50,6 @@ HandGestureReelControler/
 └── README.md
 ```
 
----
-
-## 🛠 Tech Stack
-
-- **Python 3**
-- **TensorFlow / Keras**
-- **OpenCV** for real-time video
-- **PyAutoGUI / pynput** for simulating keyboard/mouse events
-- (Optional) **Flask** or **PyQt** for UI
-
----
-
 ## 🚀 Quick Start
 
 ### 1. Clone the project and install dependencies
