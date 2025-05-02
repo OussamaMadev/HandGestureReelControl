@@ -1,5 +1,9 @@
 TODO:
+  real time gesture recognition
+  reel conroller
+  gesture-action map edite
 
 DOING:
+  model disign and train
 
 DONE:
