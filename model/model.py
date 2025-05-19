@@ -10,113 +10,49 @@ import torch.optim as optim
 import torch.utils.data as data
 from torchvision import models, transforms
 
-torch.manual_seed(1234)
-np.random.seed(1234)
-random.seed(1234)
-
-# preprocess class for each image
-class ImageTransform():
-    def __init__(self, size, mean, std):
-        self.data_transform = {
-            'train': transforms.Compose([
-                # data augmentation
-                transforms.RandomResizedCrop(size, scale=(0.5, 1.0)),
-                transforms.RandomHorizontalFlip(),
-                # convert to tensor for PyTorch
-                transforms.ToTensor(),
-                # color normalization
-                transforms.Normalize(mean, std)
-            ]),
-            'val': transforms.Compose([
-                transforms.CenterCrop(size),
-                transforms.ToTensor(),
-                transforms.Normalize(mean, std)
-            ])
-        }
-
-    def __call__(self, img, phase='train'):
-
-        return self.data_transform[phase](img)
-
-image_file_path = './chest_xray/test/PNEUMONIA/person100_bacteria_479.jpeg'
-
-img_originalsize = Image.open(image_file_path) # [channel, ]
-img = img_originalsize.resize((256, 256))
-img = img.convert("L").convert("RGB")
-plt.imshow(img)
-plt.show()
-
-# after preprocess
-size = 256
-mean = (0.485, 0.456, 0.406)
-std = (0.229, 0.224, 0.225)
-transform = ImageTransform(size, mean, std)
-img_transformed = transform(img, phase="train")
-print (img_transformed.shape)
-
-# (color, height, width) -> (height, width, color), normalize colors in the range (0 - 1)
-img_transformed = img_transformed.numpy().transpose((1, 2, 0))
-img_transformed = np.clip(img_transformed, 0, 1)
-plt.imshow(img_transformed)
-plt.show()
-
-
-import os.path as osp
-import glob
-
-# Making file path list
-def make_datapath_list(phase="train"):
-    rootpath = "chest_xray"
-    target_path = osp.join(rootpath, phase, "**", "*.jpeg")
-    path_list = glob.glob(target_path, recursive=True)
-    return path_list
-
-train_list = make_datapath_list(phase="train")
-print(train_list)
-
-val_list = make_datapath_list(phase="val")
-print(len(val_list))
-
-class lungDataset(data.Dataset):
-
-    def __init__(self, file_list, transform=None, phase='train'):
-        self.file_list = file_list
-        self.transform = transform
-        self.phase = phase
-
-    def __len__(self):
-        return len(self.file_list)
-
-    def __getitem__(self, index):
-
-        img_path = self.file_list[index]
-        img_originalsize = Image.open(img_path)
-        img = img_originalsize.resize((256, 256))
-        img = img.convert("L").convert("RGB")
-        img_transformed = self.transform(img, self.phase)
-        label = img_path.split('\\')[-2]
-        if label == "NORMAL":
-            label = 0
-        elif label == "PNEUMONIA":
-            label = 1
-
-        return img_transformed, label
-
-train_dataset = lungDataset(file_list=train_list, transform=ImageTransform(size, mean, std), phase='train')
-val_dataset = lungDataset(file_list=val_list, transform=ImageTransform(size, mean, std), phase='val')
-
-batch_size = 32
-
-train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-dataloaders_dict = {"train": train_dataloader, "val": val_dataloader}
-
 use_pretrained = True
-net = models.vgg16(pretrained=use_pretrained)
 
-# Replace output layer for 2 class classifier, 'NORMAL' and 'PNEUMONIA'.
-net.classifier[6] = nn.Linear(in_features=4096, out_features=2)
-net.train()
+class HandGestureModel(nn.Module):
+    def __init__(self, base_model_name='mobilenet_v2', num_classes=14):
+        super(HandGestureModel, self).__init__()
+
+        if base_model_name == 'mobilenet_v2':
+            self.base = models.mobilenet_v2(pretrained=True)
+            in_features = self.base.classifier[1].in_features
+            self.base.classifier = nn.Sequential(
+                nn.Dropout(0.5),
+                nn.Linear(in_features, 512),
+                nn.ReLU(),
+                nn.Dropout(0.5),
+                nn.Linear(512, num_classes)
+            )
+        elif base_model_name == 'vgg16':
+            self.base = models.vgg16(pretrained=True)
+            in_features = self.base.classifier[6].in_features
+            self.base.classifier[6] = nn.Sequential(
+                nn.Linear(in_features, 512),
+                nn.ReLU(),
+                nn.Dropout(0.5),
+                nn.Linear(512, num_classes)
+            )
+        else:
+            raise ValueError("Unsupported base model")
+
+    def forward(self, x):
+        return self.base(x)
+
+# class model():
+#     def __init__(self):
+#         net1 = models.vgg16(pretrained=use_pretrained)
+#         net2 = models.vgg19(pretrained=use_pretrained)
+#         net3 = models.mobilnet(pretrained=use_pretrained)
+        
+#         net1.classifier[6] = nn.Linear(in_features=4096, out_features=16)
+#         net2.classifier[6] = nn.Linear(in_features=4096, out_features=16)
+#         net3.classifier[6] = nn.Linear(in_features=4096, out_features=16)
+
+#     def forwordPass(self):
+
 
 criterion = nn.CrossEntropyLoss()
 params_to_update_1 = []
@@ -218,19 +154,21 @@ def train_model(net, dataloaders_dict, criterion, optimizer, num_epochs):
     return accuracy_list, loss_list
 
 
-# start training
-num_epochs=10
-accuracy_list, loss_list = train_model(net, dataloaders_dict, criterion, optimizer, num_epochs=num_epochs)
+def evaluate_model(model, data_loader, criterion, device):
+    model.eval()
+    loss = 0.0
+    correct = 0
+    total = 0
 
-# To save trained model
-save_path = './weights_fine_tuning.pth'
-torch.save(net.state_dict(), save_path)
+    with torch.no_grad():
+        for inputs, labels in data_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            batch_loss = criterion(outputs, labels)
+            loss += batch_loss.item() * inputs.size(0)
 
+            _, predicted = torch.max(outputs, 1)
+            correct += (predicted == labels).sum().item()
+            total += labels.size(0)
 
-epoch_num = list(range(10))
-fig, ax = plt.subplots(facecolor="w")
-ax.plot(epoch_num, accuracy_list, label="accuracy")
-ax.plot(epoch_num, loss_list, label="loss")
-plt.xticks(epoch_num)
-ax.legend()
-plt.show()
+    return loss / total, correct / total
