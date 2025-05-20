@@ -11,13 +11,14 @@ import torch.utils.data as data
 from torchvision import models, transforms
 
 use_pretrained = True
+from torchvision.models import mobilenet_v2, vgg16, efficientnet_b0
 
 class HandGestureModel(nn.Module):
-    def __init__(self, base_model_name='mobilenet_v2', num_classes=14):
+    def __init__(self, base_model_name='mobilenet_v2', num_classes=14, pretrained=True, weight_path=None):
         super(HandGestureModel, self).__init__()
 
         if base_model_name == 'mobilenet_v2':
-            self.base = models.mobilenet_v2(pretrained=True)
+            self.base = mobilenet_v2(pretrained=pretrained)
             in_features = self.base.classifier[1].in_features
             self.base.classifier = nn.Sequential(
                 nn.Dropout(0.5),
@@ -26,8 +27,9 @@ class HandGestureModel(nn.Module):
                 nn.Dropout(0.5),
                 nn.Linear(512, num_classes)
             )
+
         elif base_model_name == 'vgg16':
-            self.base = models.vgg16(pretrained=True)
+            self.base = vgg16(pretrained=pretrained)
             in_features = self.base.classifier[6].in_features
             self.base.classifier[6] = nn.Sequential(
                 nn.Linear(in_features, 512),
@@ -35,63 +37,29 @@ class HandGestureModel(nn.Module):
                 nn.Dropout(0.5),
                 nn.Linear(512, num_classes)
             )
+
+        elif base_model_name == 'efficientnet_b0':
+            self.base = efficientnet_b0(pretrained=False)  # Load custom weights later
+            in_features = self.base.classifier[1].in_features
+            self.base.classifier = nn.Sequential(
+                nn.Dropout(0.5),
+                nn.Linear(in_features, 512),
+                nn.ReLU(),
+                nn.Dropout(0.5),
+                nn.Linear(512, num_classes)
+            )
+            if weight_path is not None:
+                state_dict = torch.load(weight_path, map_location='cpu')
+                self.load_state_dict(state_dict)
+                print(f"Loaded EfficientNet weights from {weight_path}")
+
         else:
-            raise ValueError("Unsupported base model")
+            raise ValueError(f"Unsupported base model: {base_model_name}")
 
     def forward(self, x):
         return self.base(x)
 
-# class model():
-#     def __init__(self):
-#         net1 = models.vgg16(pretrained=use_pretrained)
-#         net2 = models.vgg19(pretrained=use_pretrained)
-#         net3 = models.mobilnet(pretrained=use_pretrained)
-        
-#         net1.classifier[6] = nn.Linear(in_features=4096, out_features=16)
-#         net2.classifier[6] = nn.Linear(in_features=4096, out_features=16)
-#         net3.classifier[6] = nn.Linear(in_features=4096, out_features=16)
 
-#     def forwordPass(self):
-
-
-# criterion = nn.CrossEntropyLoss()
-# params_to_update_1 = []
-# params_to_update_2 = []
-# params_to_update_3 = []
-
-# update_param_names_1 = ["features"]
-# update_param_names_2 = ["classifier.0.weight", "classifier.0.bias", "classifier.3.weight", "classifier.3.bias"]
-# update_param_names_3 = ["classifier.6.weight", "classifier.6.bias"]
-
-# for name, param in net.named_parameters():
-#     if update_param_names_1[0] in name:
-#         param.requires_grad = True
-#         params_to_update_1.append(param)
-#         # print("params_to_update_1:", name)
-
-#     elif name in update_param_names_2:
-#         param.requires_grad = True
-#         params_to_update_2.append(param)
-#         #print("params_to_update_2:", name)
-
-#     elif name in update_param_names_3:
-#         param.requires_grad = True
-#         params_to_update_3.append(param)
-#         #print("params_to_update_3:", name)
-
-#     else:
-#         param.requires_grad = False
-#         #print("no learning", name)
-
-# # Set learning rates
-# optimizer = optim.SGD([
-#     {'params': params_to_update_1, 'lr': 1e-4},
-#     {'params': params_to_update_2, 'lr': 5e-4},
-#     {'params': params_to_update_3, 'lr': 1e-3}
-# ], momentum=0.9)
-
-
-# training function
 def train_model(net, dataloaders_dict, criterion, optimizer, num_epochs):
 
     accuracy_list = []
@@ -152,7 +120,6 @@ def train_model(net, dataloaders_dict, criterion, optimizer, num_epochs):
                 loss_list.append(epoch_loss)
 
     return accuracy_list, loss_list
-
 
 def evaluate_model(model, data_loader, criterion, device):
     model.eval()
