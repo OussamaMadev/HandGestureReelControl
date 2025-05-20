@@ -54,41 +54,41 @@ class HandGestureModel(nn.Module):
 #     def forwordPass(self):
 
 
-criterion = nn.CrossEntropyLoss()
-params_to_update_1 = []
-params_to_update_2 = []
-params_to_update_3 = []
+# criterion = nn.CrossEntropyLoss()
+# params_to_update_1 = []
+# params_to_update_2 = []
+# params_to_update_3 = []
 
-update_param_names_1 = ["features"]
-update_param_names_2 = ["classifier.0.weight", "classifier.0.bias", "classifier.3.weight", "classifier.3.bias"]
-update_param_names_3 = ["classifier.6.weight", "classifier.6.bias"]
+# update_param_names_1 = ["features"]
+# update_param_names_2 = ["classifier.0.weight", "classifier.0.bias", "classifier.3.weight", "classifier.3.bias"]
+# update_param_names_3 = ["classifier.6.weight", "classifier.6.bias"]
 
-for name, param in net.named_parameters():
-    if update_param_names_1[0] in name:
-        param.requires_grad = True
-        params_to_update_1.append(param)
-        # print("params_to_update_1:", name)
+# for name, param in net.named_parameters():
+#     if update_param_names_1[0] in name:
+#         param.requires_grad = True
+#         params_to_update_1.append(param)
+#         # print("params_to_update_1:", name)
 
-    elif name in update_param_names_2:
-        param.requires_grad = True
-        params_to_update_2.append(param)
-        #print("params_to_update_2:", name)
+#     elif name in update_param_names_2:
+#         param.requires_grad = True
+#         params_to_update_2.append(param)
+#         #print("params_to_update_2:", name)
 
-    elif name in update_param_names_3:
-        param.requires_grad = True
-        params_to_update_3.append(param)
-        #print("params_to_update_3:", name)
+#     elif name in update_param_names_3:
+#         param.requires_grad = True
+#         params_to_update_3.append(param)
+#         #print("params_to_update_3:", name)
 
-    else:
-        param.requires_grad = False
-        #print("no learning", name)
+#     else:
+#         param.requires_grad = False
+#         #print("no learning", name)
 
-# Set learning rates
-optimizer = optim.SGD([
-    {'params': params_to_update_1, 'lr': 1e-4},
-    {'params': params_to_update_2, 'lr': 5e-4},
-    {'params': params_to_update_3, 'lr': 1e-3}
-], momentum=0.9)
+# # Set learning rates
+# optimizer = optim.SGD([
+#     {'params': params_to_update_1, 'lr': 1e-4},
+#     {'params': params_to_update_2, 'lr': 5e-4},
+#     {'params': params_to_update_3, 'lr': 1e-3}
+# ], momentum=0.9)
 
 
 # training function
