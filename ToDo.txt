@@ -4,6 +4,6 @@ TODO:
   gesture-action map edite
 
 DOING:
-  model disign and train
+model disign and train
 
 DONE:
