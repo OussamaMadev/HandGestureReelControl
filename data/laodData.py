@@ -6,7 +6,7 @@ from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset, DataLoader
 
 class HG14Dataset(Dataset):
-    def __init__(self, data_dir, transform=None, split='train', train_ratio=0.7, val_ratio=0.15):
+    def __init__(self, data_dir, transform=None, split='train', train_ratio=0.65, val_ratio=0.15):
         self.data_dir = data_dir
         self.transform = transform
         self.split = split
@@ -48,19 +48,16 @@ class HG14Dataset(Dataset):
 def get_transforms(image_size=224):
     return {
         'train': A.Compose([
-            A.RandomResizedCrop(image_size, image_size, scale=(0.8, 1.0)),
+            A.Resize(height=image_size, width=image_size), 
             A.HorizontalFlip(p=0.5),
-            A.RandomBrightnessContrast(p=0.3),
-            A.HueSaturationValue(p=0.3),
-            A.MotionBlur(p=0.1),
-            A.CLAHE(p=0.2),
-            A.ShiftScaleRotate(p=0.4),
-            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            A.Normalize(mean=(0.485, 0.456, 0.406),
+                        std=(0.229, 0.224, 0.225)),
             ToTensorV2()
         ]),
         'val': A.Compose([
-            A.Resize(image_size, image_size),
-            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            A.Resize(height=image_size, width=image_size),
+            A.Normalize(mean=(0.485, 0.456, 0.406),
+                        std=(0.229, 0.224, 0.225)),
             ToTensorV2()
         ])
     }
