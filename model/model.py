@@ -1,141 +1,133 @@
-import glob
-import os.path as osp
-import random
-import numpy as np
-from PIL import Image
-import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import torch.utils.data as data
-from torchvision import models, transforms
+import matplotlib.pyplot as plt
+from torchvision import models
 
-use_pretrained = True
-from torchvision.models import mobilenet_v2, vgg16, efficientnet_b0
+# === Create pretrained base + classifier ===
+def create_model(model_name, num_classes=14):
+    if model_name == 'vgg16':
+        base = models.vgg16(pretrained=True)
+        in_features = base.classifier[6].in_features
+        base.classifier[6] = nn.Identity()
+    elif model_name == 'vgg19':
+        base = models.vgg19(pretrained=True)
+        in_features = base.classifier[6].in_features
+        base.classifier[6] = nn.Identity()
+    elif model_name == 'efficientnet_b0':
+        base = models.efficientnet_b0(pretrained=True)
+        in_features = base.classifier[1].in_features
+        base.classifier[1] = nn.Identity()
+    else:
+        raise ValueError("Unsupported model")
 
-class HandGestureModel(nn.Module):
-    def __init__(self, base_model_name='mobilenet_v2', num_classes=14, pretrained=True, weight_path=None):
-        super(HandGestureModel, self).__init__()
+    classifier = nn.Sequential(
+        nn.Linear(in_features, 1024),
+        nn.ReLU(),
+        nn.BatchNorm1d(1024),
+        nn.Dropout(0.5),
+        nn.Linear(1024, 512),
+        nn.ReLU(),
+        nn.BatchNorm1d(512),
+        nn.Dropout(0.3),
+        nn.Linear(512, num_classes)
+    )
 
-        if base_model_name == 'mobilenet_v2':
-            self.base = mobilenet_v2(pretrained=pretrained)
-            in_features = self.base.classifier[1].in_features
-            self.base.classifier = nn.Sequential(
-                nn.Dropout(0.5),
-                nn.Linear(in_features, 512),
-                nn.ReLU(),
-                nn.Dropout(0.5),
-                nn.Linear(512, num_classes)
-            )
+    return base, classifier
 
-        elif base_model_name == 'vgg16':
-            self.base = vgg16(pretrained=pretrained)
-            in_features = self.base.classifier[6].in_features
-            self.base.classifier[6] = nn.Sequential(
-                nn.Linear(in_features, 512),
-                nn.ReLU(),
-                nn.Dropout(0.5),
-                nn.Linear(512, num_classes)
-            )
+# === Train and evaluate ===
+def train_model(model, classifier, loaders, device, epochs=10, lr=1e-4):
+    model.to(device)
+    classifier.to(device)
+    optimizer = torch.optim.Adam(list(model.parameters()) + list(classifier.parameters()), lr=lr)
+    criterion = nn.CrossEntropyLoss()
 
-        elif base_model_name == 'efficientnet_b0':
-            self.base = efficientnet_b0(pretrained=False)  # Load custom weights later
-            in_features = self.base.classifier[1].in_features
-            self.base.classifier = nn.Sequential(
-                nn.Dropout(0.5),
-                nn.Linear(in_features, 512),
-                nn.ReLU(),
-                nn.Dropout(0.5),
-                nn.Linear(512, num_classes)
-            )
-            if weight_path is not None:
-                state_dict = torch.load(weight_path, map_location='cpu')
-                self.load_state_dict(state_dict)
-                print(f"Loaded EfficientNet weights from {weight_path}")
+    train_losses, val_losses, val_accs = [], [], []
 
-        else:
-            raise ValueError(f"Unsupported base model: {base_model_name}")
+    for epoch in range(epochs):
+        model.train()
+        classifier.train()
+        running_loss, correct, total = 0, 0, 0
 
-    def forward(self, x):
-        return self.base(x)
+        for x, y in loaders['train']:
+            x, y = x.to(device), y.to(device)
+            optimizer.zero_grad()
+            out = classifier(model(x))
+            loss = criterion(out, y)
+            loss.backward()
+            optimizer.step()
 
+            running_loss += loss.item() * x.size(0)
+            correct += (out.argmax(1) == y).sum().item()
+            total += y.size(0)
 
-def train_model(net, dataloaders_dict, criterion, optimizer, num_epochs):
+        train_loss = running_loss / total
+        val_loss, val_acc = evaluate(model, classifier, loaders['val'], device)
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        val_accs.append(val_acc)
 
-    accuracy_list = []
-    loss_list = []
+        print(f"Epoch {epoch+1}/{epochs} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.4f}")
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print("using device：", device)
-    net.to(device)
-    torch.backends.cudnn.benchmark = True
+    plot_metrics(train_losses, val_losses, val_accs)
 
-    # epoch loop
-    for epoch in range(num_epochs):
-        print('Epoch {}/{}'.format(epoch+1, num_epochs))
-        print('-------------')
-
-        for phase in ['train', 'val']:
-            if phase == 'train':
-                net.train()
-            else:
-                net.eval()
-
-            epoch_loss = 0.0
-            epoch_corrects = 0
-
-            for i, (inputs, labels) in enumerate(dataloaders_dict[phase]):
-
-                print (f'Iteration: ', i)
-                print (labels)
-
-                inputs = inputs.to(device)
-                labels = labels.to(device)
-
-                optimizer.zero_grad()
-                with torch.set_grad_enabled(phase == 'train'):
-                    # Forward pass
-                    outputs = net(inputs)
-                    loss = criterion(outputs, labels)  # Calcurate loss
-                    _, preds = torch.max(outputs, 1)  # Prediction
-
-                    # Back propagtion
-                    if phase == 'train':
-                        loss.backward()
-                        optimizer.step()
-
-                    # update loss summation
-                    epoch_loss += loss.item() * inputs.size(0)
-                    # update correct prediction summation
-                    epoch_corrects += torch.sum(preds == labels.data)
-
-            # loss and accuracy for each epoch loop
-            epoch_loss = epoch_loss / len(dataloaders_dict[phase].dataset)
-            epoch_acc = epoch_corrects.double() / len(dataloaders_dict[phase].dataset)
-
-            print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
-
-            if phase == 'val':
-                accuracy_list.append(epoch_acc.item())
-                loss_list.append(epoch_loss)
-
-    return accuracy_list, loss_list
-
-def evaluate_model(model, data_loader, criterion, device):
+def evaluate(model, classifier, loader, device):
     model.eval()
-    loss = 0.0
-    correct = 0
-    total = 0
+    classifier.eval()
+    criterion = nn.CrossEntropyLoss()
+    total_loss, correct, total = 0.0, 0, 0
 
     with torch.no_grad():
-        for inputs, labels in data_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
-            batch_loss = criterion(outputs, labels)
-            loss += batch_loss.item() * inputs.size(0)
+        for x, y in loader:
+            x, y = x.to(device), y.to(device)
+            out = classifier(model(x))
+            loss = criterion(out, y)
+            total_loss += loss.item() * x.size(0)
+            correct += (out.argmax(1) == y).sum().item()
+            total += y.size(0)
 
-            _, predicted = torch.max(outputs, 1)
-            correct += (predicted == labels).sum().item()
-            total += labels.size(0)
+    return total_loss / total, correct / total
 
-    return loss / total, correct / total
+def plot_metrics(train_losses, val_losses, val_accs):
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(val_losses, label='Val Loss')
+    plt.legend()
+    plt.title('Loss')
+    plt.subplot(1, 2, 2)
+    plt.plot(val_accs, label='Val Accuracy')
+    plt.legend()
+    plt.title('Accuracy')
+    plt.tight_layout()
+    plt.show()
+
+def save_model(model, classifier, path):
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'classifier_state_dict': classifier.state_dict()
+    }, path)
+
+def load_model(model_name, path, num_classes=14):
+    model, classifier = create_model(model_name, num_classes)
+    checkpoint = torch.load(path, map_location='cpu')
+    model.load_state_dict(checkpoint['model_state_dict'])
+    classifier.load_state_dict(checkpoint['classifier_state_dict'])
+    return model, classifier
+
+# === Voting Ensemble ===
+def predict_ensemble(models, classifiers, dataloader, device):
+    for m, c in zip(models, classifiers):
+        m.eval()
+        c.eval()
+
+    all_preds = []
+
+    with torch.no_grad():
+        for x, _ in dataloader:
+            x = x.to(device)
+            outputs = [clf(model(x)) for model, clf in zip(models, classifiers)]
+            avg_output = torch.mean(torch.stack(outputs), dim=0)
+            preds = torch.argmax(avg_output, dim=1)
+            all_preds.append(preds.cpu())
+
+    return torch.cat(all_preds)

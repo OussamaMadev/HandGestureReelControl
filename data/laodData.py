@@ -1,82 +1,79 @@
-import torch
-import random
-import numpy as np
+# === loadData.py ===
 import os
-import glob
-from PIL import Image
-from torchvision import transforms
+import cv2
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset, DataLoader
 
-# Fix random seed for reproducibility
-torch.manual_seed(1234)
-np.random.seed(1234)
-random.seed(1234)
-
-# Image transformation class
-class ImageTransform:
-    def __init__(self, size, mean, std):
-        self.data_transform = {
-            'train': transforms.Compose([
-                transforms.RandomResizedCrop(size, scale=(0.5, 1.0)),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize(mean, std)
-            ]),
-            'val': transforms.Compose([
-                transforms.Resize((size, size)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean, std)
-            ])
-        }
-
-    def __call__(self, img, phase='train'):
-        return self.data_transform[phase](img)
-
-# Custom dataset class for hand gestures
-class HandGestureDataset(Dataset):
-    def __init__(self, file_list, transform=None, phase='train'):
-        self.file_list = file_list
+class HG14Dataset(Dataset):
+    def __init__(self, data_dir, transform=None, split='train', train_ratio=0.7, val_ratio=0.15):
+        self.data_dir = data_dir
         self.transform = transform
-        self.phase = phase
-        self.label_map = self._create_label_map()
+        self.split = split
 
-    def _create_label_map(self):
-        gesture_names = sorted({os.path.basename(os.path.dirname(p)) for p in self.file_list})
-        return {name: idx for idx, name in enumerate(gesture_names)}
+        self.image_paths = []
+        self.labels = []
+        self.class_names = sorted(os.listdir(data_dir))
+        self.class_to_idx = {cls: i for i, cls in enumerate(self.class_names)}
+
+        for cls in self.class_names:
+            cls_folder = os.path.join(data_dir, cls)
+            all_imgs = sorted([f for f in os.listdir(cls_folder) if f.lower().endswith('.jpg')])
+            total = len(all_imgs)
+            train_end = int(total * train_ratio)
+            val_end = int(total * (train_ratio + val_ratio))
+
+            if split == 'train':
+                selected_imgs = all_imgs[:train_end]
+            elif split == 'val':
+                selected_imgs = all_imgs[train_end:val_end]
+            else:
+                selected_imgs = all_imgs[val_end:]
+
+            for img in selected_imgs:
+                self.image_paths.append(os.path.join(cls_folder, img))
+                self.labels.append(self.class_to_idx[cls])
 
     def __len__(self):
-        return len(self.file_list)
+        return len(self.image_paths)
 
-    def __getitem__(self, index):
-        img_path = self.file_list[index]
-        img = Image.open(img_path).convert("RGB")
-        img = img.resize((256, 256))
-        label_name = os.path.basename(os.path.dirname(img_path))
-        label = self.label_map[label_name]
-
+    def __getitem__(self, idx):
+        image = cv2.imread(self.image_paths[idx])
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         if self.transform:
-            img = self.transform(img, self.phase)
+            image = self.transform(image=image)['image']
+        return image, self.labels[idx]
 
-        return img, label
 
-# Function to make file list
-def make_datapath_list(root="data", phase="train"):
-    path_pattern = os.path.join(root, phase, "*", "*.jpg")
-    return glob.glob(path_pattern, recursive=True)
+def get_transforms(image_size=224):
+    return {
+        'train': A.Compose([
+            A.Resize(image_size, image_size),
+            A.HorizontalFlip(p=0.5),
+            A.RandomBrightnessContrast(p=0.2),
+            A.ShiftScaleRotate(p=0.3),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ToTensorV2()
+        ]),
+        'val': A.Compose([
+            A.Resize(image_size, image_size),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ToTensorV2()
+        ])
+    }
 
-# Function to create DataLoaders
-def create_dataloaders(root="data", size=128, batch_size=32):
-    mean = (0.485, 0.456, 0.406)
-    std = (0.229, 0.224, 0.225)
-    transform = ImageTransform(size, mean, std)
 
-    train_list = make_datapath_list(root=root, phase="train")
-    val_list = make_datapath_list(root=root, phase="val")
+def create_dataloaders(data_dir, batch_size=32, image_size=224):
+    transforms = get_transforms(image_size)
 
-    train_dataset = HandGestureDataset(train_list, transform, phase='train')
-    val_dataset = HandGestureDataset(val_list, transform, phase='val')
+    loaders = {
+        split: DataLoader(
+            HG14Dataset(data_dir, transform=transforms['train' if split == 'train' else 'val'], split=split),
+            batch_size=batch_size,
+            shuffle=(split == 'train')
+        )
+        for split in ['train', 'val', 'test']
+    }
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-
-    return {'train': train_loader, 'val': val_loader}
+    class_names = sorted(os.listdir(data_dir))
+    return loaders, class_names
