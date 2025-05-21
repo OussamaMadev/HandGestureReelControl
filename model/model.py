@@ -150,3 +150,12 @@ def load_model(model_name, path=None, num_classes=14, use_pretrained=True, load_
         print("Initialized model without loading checkpoint.")
 
     return model, classifier
+
+
+def predict_image(model, classifier, image_tensor, device):
+    model.eval()
+    classifier.eval()
+    with torch.no_grad():
+        image_tensor = image_tensor.unsqueeze(0).to(device)
+        output = classifier(model(image_tensor))
+        return torch.argmax(output, dim=1).item()
