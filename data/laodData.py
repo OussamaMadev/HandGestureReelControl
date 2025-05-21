@@ -48,10 +48,13 @@ class HG14Dataset(Dataset):
 def get_transforms(image_size=224):
     return {
         'train': A.Compose([
-            A.Resize(image_size, image_size),
+            A.RandomResizedCrop(image_size, image_size, scale=(0.8, 1.0)),
             A.HorizontalFlip(p=0.5),
-            A.RandomBrightnessContrast(p=0.2),
-            A.ShiftScaleRotate(p=0.3),
+            A.RandomBrightnessContrast(p=0.3),
+            A.HueSaturationValue(p=0.3),
+            A.MotionBlur(p=0.1),
+            A.CLAHE(p=0.2),
+            A.ShiftScaleRotate(p=0.4),
             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2()
         ]),

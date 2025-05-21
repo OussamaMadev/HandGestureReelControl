@@ -20,17 +20,19 @@ def create_model(model_name, num_classes=14):
     else:
         raise ValueError("Unsupported model")
 
+
     classifier = nn.Sequential(
-        nn.Linear(in_features, 1024),
-        nn.ReLU(),
-        nn.BatchNorm1d(1024),
-        nn.Dropout(0.5),
-        nn.Linear(1024, 512),
-        nn.ReLU(),
-        nn.BatchNorm1d(512),
-        nn.Dropout(0.3),
-        nn.Linear(512, num_classes)
-    )
+    nn.Linear(in_features, 512),
+    nn.LeakyReLU(0.1),
+    nn.BatchNorm1d(512),
+    nn.Dropout(0.4),
+    nn.Linear(512, 256),
+    nn.LeakyReLU(0.1),
+    nn.BatchNorm1d(256),
+    nn.Dropout(0.2),
+    nn.Linear(256, num_classes)
+)
+
 
     return base, classifier
 
